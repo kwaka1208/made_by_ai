@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gundam FPS: Cockpit View</title>
+    <!-- Google Fonts: Orbitron (for futuristic UI text) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&display=swap" rel="stylesheet">
+    <style>
+        /* Base styles for the body */
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling */
+            background-color: #000; /* Black background for space */
+            font-family: 'Orbitron', sans-serif; /* Futuristic font */
+            color: #0f0; /* Green text for UI elements */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh; /* Full viewport height */
+            cursor: crosshair; /* Crosshair cursor for aiming */
+        }
+
+        /* Main game container */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        /* Game view area where enemies appear */
+        #game-view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Space background with subtle animation */
+            background-image: linear-gradient(to bottom, #001f3f, #000000);
+            background-size: 100% 200%; /* Allows for vertical scrolling effect */
+            animation: moveBackground 60s linear infinite; /* Slow, continuous background movement */
+        }
+
+        /* Keyframes for background animation */
+        @keyframes moveBackground {
+            from { background-position: 0 0; }
+            to { background-position: 0 100%; }
+        }
+
+        /* Cockpit overlay */
+        #cockpit-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allows mouse events to pass through to game-view */
+            z-index: 10; /* Ensures it's on top */
+        }
+
+        /* Cockpit image (placeholder) */
+        #cockpit-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Ensures the image covers the entire area */
+            opacity: 0.7; /* Slightly transparent to see game world */
+            filter: brightness(0.8); /* Darken slightly */
+        }
+
+        /* Common enemy styles */
+        .enemy {
+            position: absolute;
+            /* width and height will be set by JS based on scale */
+            /* border-radius: 50%; Removed for more mobile suit like shape */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8em;
+            color: white;
+            text-shadow: 0 0 5px #0f0;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+            animation: pulse 1s infinite alternate; /* Subtle pulse effect */
+            transform-origin: center center; /* Ensure scaling is from the center */
+        }
+
+        /* Zaku specific styles */
+        .zaku {
+            background-color: #28a745; /* Green */
+            border: 2px solid #00561e;
+        }
+
+        .zaku::before { /* Mono-eye */
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #ff0000; /* Red mono-eye */
+            border-radius: 50%;
+            box-shadow: 0 0 8px #ff0000;
+            top: 25px; /* Adjust position */
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Black Tri-Stars specific styles */
+        .black-tri-star {
+            background-color: #343a40; /* Dark grey */
+            border: 2px solid #1c1f23;
+        }
+
+        .black-tri-star::before { /* Mono-eye */
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #ff0000; /* Red mono-eye */
+            border-radius: 50%;
+            box-shadow: 0 0 8px #ff0000;
+            top: 25px; /* Adjust position */
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Char's Zaku specific styles */
+        .char-zaku {
+            background-color: #dc3545; /* Red */
+            border: 3px solid #8b0000;
+            /* width and height will be set by JS based on scale */
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.7);
+            animation: pulse-red 0.8s infinite alternate; /* Faster, red pulse */
+        }
+
+        .char-zaku::before { /* Mono-eye */
+            content: '';
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            background-color: #ffeb3b; /* Yellow mono-eye */
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ffeb3b;
+            top: 30px; /* Adjust position */
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Shot styles */
+        .shot {
+            position: absolute;
+            /* width and height will be set by JS based on scale */
+            background-color: #00ffff; /* Cyan beam */
+            box-shadow: 0 0 15px #00ffff, 0 0 5px #fff;
+            border-radius: 2px;
+            z-index: 5;
+            transform-origin: center center; /* Ensure scaling is from the center */
+        }
+
+        /* UI elements */
+        #ui-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 11; /* Above cockpit */
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #0f0;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        #score-display, #health-display {
+            font-size: 1.2em;
+            text-shadow: 0 0 5px #0f0;
+        }
+
+        /* Game messages */
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            border: 2px solid #0f0;
+            padding: 20px 40px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 2em;
+            font-weight: bold;
+            color: #0f0;
+            text-shadow: 0 0 10px #0f0;
+            z-index: 12;
+            display: none; /* Hidden by default */
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.7);
+        }
+
+        /* Start button */
+        #start-button {
+            position: absolute;
+            top: 65%; /* Below message box */
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            font-size: 1.5em;
+            font-family: 'Orbitron', sans-serif;
+            background-color: #007bff; /* Blue button */
+            color: white;
+            border: 2px solid #0056b3;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 12;
+            box-shadow: 0 0 15px rgba(0, 123, 255, 0.7);
+            transition: background-color 0.3s, transform 0.3s;
+        }
+
+        #start-button:hover {
+            background-color: #0056b3;
+            transform: translateX(-50%) scale(1.05);
+        }
+
+        /* Keyframe animations */
+        @keyframes pulse {
+            0% { box-shadow: 0 0 10px rgba(0, 255, 0, 0.5); }
+            100% { box-shadow: 0 0 20px rgba(0, 255, 0, 0.8); }
+        }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.7); }
+            100% { box-shadow: 0 0 30px rgba(255, 0, 0, 1); }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            /* Base enemy size for smaller screens */
+            .enemy {
+                /* width and height will be scaled, these are base values */
+                min-width: 60px;
+                min-height: 60px;
+            }
+            .zaku::before, .black-tri-star::before {
+                width: 15px;
+                height: 15px;
+                top: 18px;
+            }
+            .char-zaku {
+                /* min-width and min-height for Char's Zaku */
+                min-width: 80px;
+                min-height: 80px;
+            }
+            .char-zaku::before {
+                width: 20px;
+                height: 20px;
+                top: 22px;
+            }
+            #message-box {
+                font-size: 1.5em;
+                padding: 15px 30px;
+            }
+            #start-button {
+                font-size: 1.2em;
+                padding: 10px 20px;
+            }
+            #ui-container {
+                font-size: 0.9em;
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="game-view"></div>
+        <div id="cockpit-overlay">
+            <!-- Placeholder cockpit image -->
+            <img id="cockpit-image" src="https://placehold.co/1920x1080/000000/0f0?text=GUNDAM+COCKPIT" alt="Gundam Cockpit Overlay">
+        </div>
+        <div id="ui-container">
+            <div id="score-display">スコア: 0</div>
+            <div id="health-display">体力: 100</div>
+        </div>
+        <div id="message-box"></div>
+        <button id="start-button">ゲームスタート</button>
+    </div>
+
+    <script>
+        // Game elements and state
+        const gameView = document.getElementById('game-view');
+        const scoreDisplay = document.getElementById('score-display');
+        const healthDisplay = document.getElementById('health-display');
+        const messageBox = document.getElementById('message-box');
+        const startButton = document.getElementById('start-button');
+
+        let score = 0;
+        let health = 100;
+        let gameRunning = false;
+        let enemies = [];
+        let shots = [];
+        let animationFrameId;
+
+        // Game constants for FPS perspective
+        const BASE_ENEMY_WIDTH = 80;
+        const BASE_ENEMY_HEIGHT = 80;
+        const BASE_CHAR_ZAKU_WIDTH = 100;
+        const BASE_CHAR_ZAKU_HEIGHT = 100;
+        const BASE_SHOT_WIDTH = 10;
+        const BASE_SHOT_HEIGHT = 20;
+
+        const ENEMY_INITIAL_SCALE = 0.05; // Enemies start very small (far away)
+        const ENEMY_MAX_SCALE = 1.0;     // Enemies reach full size (closest)
+        const ENEMY_SCALE_RATE_NORMAL = 0.005; // How fast normal enemies grow
+        const ENEMY_SCALE_RATE_CHAR = ENEMY_SCALE_RATE_NORMAL * 3; // Char's Zaku grows 3x faster
+
+        const SHOT_INITIAL_SCALE = 1.0;  // Shots start full size (closest)
+        const SHOT_MIN_SCALE = 0.05;     // Shots shrink to very small (far away)
+        const SHOT_SCALE_RATE = 0.05;    // How fast shots shrink
+
+        const ZAKU_SPAWN_INTERVAL = 1500; // Milliseconds
+        const TRI_STAR_SPAWN_INTERVAL = 20000; // Milliseconds
+        const CHAR_ZAKU_SPAWN_SCORE = 500; // Score to trigger Char's Zaku
+        const MAX_ENEMIES = 10;
+        const ENEMY_DAMAGE = 10; // Damage taken when an enemy passes by
+        const SHOT_COOLDOWN = 200; // Milliseconds between shots
+        let lastShotTime = 0;
+
+        // Timers for spawning
+        let zakuSpawnTimer;
+        let triStarSpawnTimer;
+        let charZakuActive = false; // Flag to indicate if Char's Zaku is the current boss
+
+        /**
+         * Initializes the game state and sets up event listeners.
+         */
+        function initGame() {
+            startButton.addEventListener('click', startGame);
+            gameView.addEventListener('click', fireShot);
+            updateUI();
+            showMessage('ガンダムFPS', 'ゲームスタートボタンを押してください');
+        }
+
+        /**
+         * Resets game state and starts the game.
+         */
+        function startGame() {
+            score = 0;
+            health = 100;
+            enemies.forEach(enemy => enemy.element.remove());
+            enemies = [];
+            shots.forEach(shot => shot.element.remove());
+            shots = [];
+            charZakuActive = false; // Reset Char's Zaku state
+            gameRunning = true;
+            messageBox.style.display = 'none';
+            startButton.style.display = 'none';
+            updateUI();
+            
+            // Clear any existing animation frame and timers
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            clearInterval(zakuSpawnTimer);
+            clearInterval(triStarSpawnTimer);
+
+            // Start game loop and spawning
+            animationFrameId = requestAnimationFrame(gameLoop);
+            zakuSpawnTimer = setInterval(spawnZaku, ZAKU_SPAWN_INTERVAL);
+            triStarSpawnTimer = setInterval(spawnBlackTriStars, TRI_STAR_SPAWN_INTERVAL);
+        }
+
+        /**
+         * Displays a message in the message box.
+         * @param {string} title - The main title of the message.
+         * @param {string} [subtitle=''] - Optional subtitle for the message.
+         */
+        function showMessage(title, subtitle = '') {
+            messageBox.innerHTML = `<div>${title}</div>${subtitle ? `<div>${subtitle}</div>` : ''}`;
+            messageBox.style.display = 'block';
+        }
+
+        /**
+         * Updates the score and health displays.
+         */
+        function updateUI() {
+            scoreDisplay.textContent = `スコア: ${score}`;
+            healthDisplay.textContent = `体力: ${health}`;
+            if (health <= 30) {
+                healthDisplay.style.color = '#ff0000'; // Red if low health
+            } else {
+                healthDisplay.style.color = '#0f0'; // Green otherwise
+            }
+        }
+
+        /**
+         * Spawns a new enemy (Zaku, Black Tri-Star, or Char's Zaku).
+         * @param {string} type - 'zaku', 'tri-star', or 'char'.
+         * @param {number} [targetX] - Optional target X position for spawning.
+         * @param {number} [targetY] - Optional target Y position for spawning.
+         */
+        function spawnEnemy(type, targetX = null, targetY = null) {
+            if (enemies.length >= MAX_ENEMIES && type !== 'char') return; // Limit regular enemies
+
+            const enemyElement = document.createElement('div');
+            enemyElement.classList.add('enemy', type);
+            
+            const baseWidth = type === 'char' ? BASE_CHAR_ZAKU_WIDTH : BASE_ENEMY_WIDTH;
+            const baseHeight = type === 'char' ? BASE_CHAR_ZAKU_HEIGHT : BASE_ENEMY_HEIGHT;
+
+            // Set initial size (will be scaled down by transform)
+            enemyElement.style.width = `${baseWidth}px`;
+            enemyElement.style.height = `${baseHeight}px`;
+
+            // Random target position on screen if not provided
+            const finalTargetX = targetX !== null ? targetX : Math.random() * gameView.offsetWidth;
+            const finalTargetY = targetY !== null ? targetY : Math.random() * gameView.offsetHeight * 0.7; // Avoid spawning too low
+
+            // Initial position (center of screen, scaled by initial_scale)
+            const initialX = gameView.offsetWidth / 2;
+            const initialY = gameView.offsetHeight / 2;
+
+            gameView.appendChild(enemyElement);
+
+            const scaleRate = type === 'char' ? ENEMY_SCALE_RATE_CHAR : ENEMY_SCALE_RATE_NORMAL;
+
+            enemies.push({
+                element: enemyElement,
+                type: type,
+                scale: ENEMY_INITIAL_SCALE,
+                baseWidth: baseWidth,
+                baseHeight: baseHeight,
+                targetX: finalTargetX,
+                targetY: finalTargetY,
+                initialX: initialX,
+                initialY: initialY,
+                speedRate: scaleRate // Speed is now tied to scale rate
+            });
+        }
+
+        /**
+         * Spawns a regular Zaku enemy.
+         */
+        function spawnZaku() {
+            if (gameRunning && !charZakuActive) { // Don't spawn regular Zakus if Char is active
+                spawnEnemy('zaku');
+            }
+        }
+
+        /**
+         * Spawns the Black Tri-Stars in a group.
+         */
+        function spawnBlackTriStars() {
+            if (gameRunning && !charZakuActive) {
+                showMessage('警告', '黒い三連星接近！');
+                // Spawn 3 Black Tri-Stars in a formation
+                const centerTargetX = Math.random() * (gameView.offsetWidth * 0.6) + (gameView.offsetWidth * 0.2); // Center-ish
+                const centerTargetY = Math.random() * (gameView.offsetHeight * 0.4) + (gameView.offsetHeight * 0.1); // Upper-ish
+
+                // Slight offsets for formation
+                spawnEnemy('black-tri-star', centerTargetX - 50, centerTargetY - 30);
+                spawnEnemy('black-tri-star', centerTargetX, centerTargetY + 50);
+                spawnEnemy('black-tri-star', centerTargetX + 50, centerTargetY - 30);
+            }
+        }
+
+        /**
+         * Spawns Char's Zaku (boss).
+         */
+        function spawnCharZaku() {
+            if (gameRunning && !charZakuActive) {
+                showMessage('ボス登場！', 'シャア専用ザク！');
+                charZakuActive = true; // Set flag
+                // Clear regular enemy spawn timers when boss appears
+                clearInterval(zakuSpawnTimer);
+                clearInterval(triStarSpawnTimer);
+                // Remove existing regular enemies
+                enemies.filter(e => e.type !== 'char').forEach(e => e.element.remove());
+                enemies = enemies.filter(e => e.type === 'char');
+
+                // Spawn Char's Zaku at a specific target location (e.g., center top)
+                spawnEnemy('char', gameView.offsetWidth / 2, gameView.offsetHeight * 0.2);
+            }
+        }
+
+        /**
+         * Fires a shot from the player's Gundam.
+         * @param {MouseEvent} event - The mouse click event.
+         */
+        function fireShot(event) {
+            if (!gameRunning) return;
+
+            const currentTime = Date.now();
+            if (currentTime - lastShotTime < SHOT_COOLDOWN) {
+                return; // Cooldown not over
+            }
+            lastShotTime = currentTime;
+
+            const shotElement = document.createElement('div');
+            shotElement.classList.add('shot');
+
+            // Player's gun barrel position (bottom center of the screen)
+            const playerGunX = gameView.offsetWidth / 2;
+            const playerGunY = gameView.offsetHeight - 80; // Slightly above bottom edge
+
+            // Target position is where the mouse was clicked
+            const targetX = event.clientX;
+            const targetY = event.clientY;
+
+            // Set initial size and position (will be scaled by transform)
+            shotElement.style.width = `${BASE_SHOT_WIDTH}px`;
+            shotElement.style.height = `${BASE_SHOT_HEIGHT}px`;
+            shotElement.style.left = `${playerGunX - BASE_SHOT_WIDTH / 2}px`;
+            shotElement.style.top = `${playerGunY - BASE_SHOT_HEIGHT / 2}px`;
+
+            gameView.appendChild(shotElement);
+
+            shots.push({
+                element: shotElement,
+                scale: SHOT_INITIAL_SCALE,
+                baseWidth: BASE_SHOT_WIDTH,
+                baseHeight: BASE_SHOT_HEIGHT,
+                startX: playerGunX,
+                startY: playerGunY,
+                targetX: targetX,
+                targetY: targetY
+            });
+        }
+
+        /**
+         * Main game loop, updates positions and checks collisions.
+         */
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // Update enemy positions and scale
+            enemies.forEach(enemy => {
+                enemy.scale += enemy.speedRate;
+
+                // Calculate current width and height based on scale
+                const currentWidth = enemy.baseWidth * enemy.scale;
+                const currentHeight = enemy.baseHeight * enemy.scale;
+
+                // Calculate screen position based on scale (perspective effect)
+                // Objects start from center (scale 0) and move towards their targetX/Y (scale 1)
+                const screenX = (gameView.offsetWidth / 2) + (enemy.targetX - gameView.offsetWidth / 2) * enemy.scale;
+                const screenY = (gameView.offsetHeight / 2) + (enemy.targetY - gameView.offsetHeight / 2) * enemy.scale;
+
+                enemy.element.style.width = `${currentWidth}px`;
+                enemy.element.style.height = `${currentHeight}px`;
+                enemy.element.style.left = `${screenX - currentWidth / 2}px`;
+                enemy.element.style.top = `${screenY - currentHeight / 2}px`;
+                enemy.element.style.transform = `scale(${enemy.scale})`; // Apply overall scaling
+
+                // If enemy reaches max scale (closest to player) and is still alive
+                if (enemy.scale >= ENEMY_MAX_SCALE) {
+                    enemy.element.remove();
+                    health -= ENEMY_DAMAGE;
+                    updateUI();
+                    // If Char's Zaku passed, reset boss state
+                    if (enemy.type === 'char') {
+                        charZakuActive = false;
+                        showMessage('シャアは逃げた！', '通常戦に戻ります');
+                        zakuSpawnTimer = setInterval(spawnZaku, ZAKU_SPAWN_INTERVAL);
+                        triStarSpawnTimer = setInterval(spawnBlackTriStars, TRI_STAR_SPAWN_INTERVAL);
+                    }
+                }
+            });
+
+            // Update shot positions and scale
+            shots.forEach(shot => {
+                shot.scale -= SHOT_SCALE_RATE;
+
+                // Calculate current width and height based on scale
+                const currentWidth = shot.baseWidth * shot.scale;
+                const currentHeight = shot.baseHeight * shot.scale;
+
+                // Calculate screen position based on scale (moving away from player)
+                // Shots start from player gun (scale 1) and move towards target (scale 0)
+                const screenX = shot.startX + (shot.targetX - shot.startX) * (1 - shot.scale);
+                const screenY = shot.startY + (shot.targetY - shot.startY) * (1 - shot.scale);
+
+                shot.element.style.width = `${currentWidth}px`;
+                shot.element.style.height = `${currentHeight}px`;
+                shot.element.style.left = `${screenX - currentWidth / 2}px`;
+                shot.element.style.top = `${screenY - currentHeight / 2}px`;
+                shot.element.style.transform = `scale(${shot.scale})`; // Apply overall scaling
+
+                // If shot shrinks too much (goes far away)
+                if (shot.scale <= SHOT_MIN_SCALE) {
+                    shot.element.remove();
+                }
+            });
+
+            // Filter out removed enemies and shots
+            enemies = enemies.filter(enemy => enemy.element.parentNode);
+            shots = shots.filter(shot => shot.element.parentNode);
+
+            checkCollisions();
+
+            // Check game over
+            if (health <= 0) {
+                gameOver();
+                return;
+            }
+
+            // Trigger Char's Zaku if score threshold reached and not already active
+            if (score >= CHAR_ZAKU_SPAWN_SCORE && !charZakuActive && enemies.filter(e => e.type === 'char').length === 0) {
+                spawnCharZaku();
+            }
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * Checks for collisions between shots and enemies.
+         */
+        function checkCollisions() {
+            for (let i = shots.length - 1; i >= 0; i--) {
+                const shot = shots[i];
+                const shotRect = shot.element.getBoundingClientRect();
+
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    const enemyRect = enemy.element.getBoundingClientRect();
+
+                    // Simple AABB collision detection
+                    if (shotRect.left < enemyRect.right &&
+                        shotRect.right > enemyRect.left &&
+                        shotRect.top < enemyRect.bottom &&
+                        shotRect.bottom > enemyRect.top)
+                    {
+                        // Collision detected!
+                        shot.element.remove();
+                        shots.splice(i, 1); // Remove shot
+
+                        enemy.element.remove();
+                        enemies.splice(j, 1); // Remove enemy
+
+                        score += (enemy.type === 'char' ? 100 : (enemy.type === 'black-tri-star' ? 30 : 10)); // Score based on enemy type
+                        updateUI();
+
+                        // If Char's Zaku was hit, reset boss state
+                        if (enemy.type === 'char') {
+                            charZakuActive = false;
+                            showMessage('シャア撃破！', '通常戦に戻ります');
+                            // Restart regular enemy spawning
+                            zakuSpawnTimer = setInterval(spawnZaku, ZAKU_SPAWN_INTERVAL);
+                            triStarSpawnTimer = setInterval(spawnBlackTriStars, TRI_STAR_SPAWN_INTERVAL);
+                        }
+                        break; // Break inner loop as shot is gone
+                    }
+                }
+            }
+        }
+
+        /**
+         * Ends the game and displays the game over message.
+         */
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationFrameId); // Stop animation loop
+            clearInterval(zakuSpawnTimer);
+            clearInterval(triStarSpawnTimer);
+            showMessage('ゲームオーバー', `スコア: ${score}`);
+            startButton.textContent = 'もう一度プレイ';
+            startButton.style.display = 'block';
+        }
+
+        // Initialize the game when the window loads
+        window.onload = initGame;
+    </script>
+</body>
+</html>

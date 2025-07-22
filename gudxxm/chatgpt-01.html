@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ガンダム風FPSサンプル</title>
+  <style>
+    body { background: #151515; margin: 0; overflow: hidden; }
+    #gameCanvas {
+      display: block;
+      margin: 0 auto;
+      background: radial-gradient(ellipse at center, #252525 70%, #000 100%);
+      border: 4px solid #999;
+      box-shadow: 0 0 60px #333;
+    }
+    #ui {
+      position: fixed;
+      top: 10px; left: 0; right: 0;
+      text-align: center;
+      color: #fff;
+      font-family: monospace;
+      font-size: 22px;
+      text-shadow: 1px 1px 3px #000;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="640" height="480"></canvas>
+  <div id="ui"></div>
+  <script>
+// --- 定数 ---
+const W = 640, H = 480;
+const ENEMY_TYPES = {
+  ZAKU: {color: '#47ff55', hp: 1, speed: 1.2, name: 'ザク'},
+  BLACK_TRI: {color: '#333', hp: 1, speed: 2, name: '黒い三連星'},
+  SHAA: {color: '#ff2222', hp: 3, speed: 3.6, name: 'シャア専用ザク'}
+};
+const BOSS_APPEAR_SCORE = 20;
+
+// --- ゲーム状態 ---
+let canvas = document.getElementById('gameCanvas');
+let ctx = canvas.getContext('2d');
+let ui = document.getElementById('ui');
+let enemies = [];
+let bullets = [];
+let score = 0, hp = 5, gameover = false;
+let frame = 0, bossAppeared = false;
+
+// --- 操作 ---
+let aim = {x: W/2, y: H/2};
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  aim.x = e.clientX - rect.left;
+  aim.y = e.clientY - rect.top;
+});
+canvas.addEventListener('click', e => {
+  if (gameover) return restart();
+  bullets.push({x: W/2, y: H-80, vx: (aim.x-W/2)/32, vy: -(H-80-aim.y)/24, life: 0});
+});
+
+function restart() {
+  enemies = [];
+  bullets = [];
+  score = 0;
+  hp = 5;
+  bossAppeared = false;
+  gameover = false;
+  frame = 0;
+}
+
+// --- 敵生成 ---
+function spawnEnemy() {
+  if (bossAppeared) return;
+  let t = Math.random();
+  let type = ENEMY_TYPES.ZAKU;
+  if (score > 8 && t > 0.92) type = ENEMY_TYPES.BLACK_TRI;
+  let x = 80 + Math.random() * (W-160);
+  let y = -50;
+  let spd = type.speed + Math.random();
+  enemies.push({type, x, y, hp: type.hp, spd, phase: 0, alive: true});
+}
+
+function spawnBoss() {
+  let x = W/2;
+  let y = -100;
+  enemies.push({type: ENEMY_TYPES.SHAA, x, y, hp: ENEMY_TYPES.SHAA.hp, spd: ENEMY_TYPES.SHAA.speed, phase: 0, alive: true});
+  bossAppeared = true;
+}
+
+// --- メインループ ---
+function loop() {
+  ctx.clearRect(0,0,W,H);
+  frame++;
+  // --- 背景（コックピット簡易風）---
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  ctx.strokeStyle = '#1e90ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(W/2, H-60, 100, Math.PI, 2*Math.PI, false);
+  ctx.stroke();
+  ctx.globalAlpha = 1.0;
+  ctx.fillStyle = '#555';
+  ctx.fillRect(W/2-10,H-80,20,40);
+  ctx.restore();
+  // --- 照準 ---
+  ctx.save();
+  ctx.strokeStyle = '#1e90ff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(aim.x-10, aim.y); ctx.lineTo(aim.x+10, aim.y);
+  ctx.moveTo(aim.x, aim.y-10); ctx.lineTo(aim.x, aim.y+10);
+  ctx.stroke();
+  ctx.restore();
+  // --- 敵生成 ---
+  if (!bossAppeared && score >= BOSS_APPEAR_SCORE && !enemies.some(e=>e.type===ENEMY_TYPES.SHAA)) {
+    spawnBoss();
+  } else if (frame % 60 === 0 && Math.random()<0.7) {
+    spawnEnemy();
+  }
+  // --- 敵更新・描画 ---
+  for(let i=enemies.length-1;i>=0;i--){
+    let e = enemies[i];
+    if (!e.alive) continue;
+    // 黒い三連星はたまに三体同時出現＋ジェットストリーム
+    if (e.type===ENEMY_TYPES.BLACK_TRI && e.phase===0) {
+      e.phase = 1;
+      for(let j=1;j<3;j++) {
+        enemies.push({type:ENEMY_TYPES.BLACK_TRI, x:e.x+j*30-30, y:e.y, hp:1, spd:e.spd, phase:2, alive:true});
+      }
+    }
+    // シャア専用ザクの動き（ジグザグ）
+    if (e.type===ENEMY_TYPES.SHAA) {
+      e.x += Math.sin(frame/18) * 2;
+    }
+    e.y += e.spd;
+    // --- 当たり判定：プレイヤー到達 ---
+    if (e.y > H-120) {
+      hp--;
+      e.alive = false;
+      if (hp<=0) gameover = true;
+    }
+    // --- 描画 ---
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, 28, 0, 2*Math.PI);
+    ctx.fillStyle = e.type.color;
+    ctx.shadowColor = e.type.color;
+    ctx.shadowBlur = 18;
+    ctx.globalAlpha = e.alive?1:0.3;
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(e.type.name, e.x, e.y-34);
+    ctx.restore();
+  }
+  // --- 弾更新・描画 ---
+  for(let i=bullets.length-1;i>=0;i--){
+    let b = bullets[i];
+    b.x += b.vx*8;
+    b.y += b.vy*8;
+    b.life++;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 6, 0, 2*Math.PI);
+    ctx.fillStyle = '#00aaff';
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 7;
+    ctx.globalAlpha = 0.7;
+    ctx.fill();
+    ctx.restore();
+    // 弾の消滅
+    if(b.y < -10 || b.x < -10 || b.x > W+10 || b.life > 60) bullets.splice(i,1);
+  }
+  // --- 弾と敵の当たり判定 ---
+  for(let i=enemies.length-1;i>=0;i--){
+    let e = enemies[i];
+    if (!e.alive) continue;
+    for(let j=bullets.length-1;j>=0;j--){
+      let b = bullets[j];
+      let dx = e.x-b.x, dy = e.y-b.y;
+      if(dx*dx+dy*dy < 34*34){
+        e.hp--;
+        bullets.splice(j,1);
+        if(e.hp<=0){ e.alive = false; score += (e.type===ENEMY_TYPES.SHAA)?10:(e.type===ENEMY_TYPES.BLACK_TRI?2:1); }
+        break;
+      }
+    }
+  }
+  // --- UI ---
+  ui.innerHTML = `スコア: ${score}　HP: ${hp}` + (gameover?'<br><span style="color:#f66">GAME OVER<br>クリックで再開</span>':'');
+  requestAnimationFrame(loop);
+}
+loop();
+  </script>
+</body>
+</html>
+w
